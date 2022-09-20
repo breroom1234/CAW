@@ -7,8 +7,28 @@ from train import *
 from module import CAWN
 from graph import NeighborFinder
 import resource
+import sys
+import pickle
 
-args, sys_argv = get_args()
+args, sys_argv = get_args() #sys_argv is list
+
+print(f"This is the type of args {type(args)}.")
+print(args)
+
+with open("args.pickle", mode="wb") as f:
+    pickle.dump(args,f)
+    print("Saving args as pickle.")
+
+with open("args.pickle", mode="rb") as f:
+    sys_argv=pickle.load(f)
+    print(sys_argv)
+
+sys.exit()
+
+print(f"This is the type of sys_argv {type(sys_argv)}.")
+print(sys_argv)
+
+sys_argv=['main.py', '-d', 'uci', '--pos_dim', '100', '--bs', '32', '--n_degree', '32', '--n_layer', '1', '--mode', 't', '--bias', '1e-6', '--pos_enc', 'lp', '--walk_pool', 'attn', '--seed', '123']
 
 BATCH_SIZE = args.bs
 NUM_NEIGHBORS = args.n_degree
@@ -33,6 +53,44 @@ NGH_CACHE = args.ngh_cache
 VERBOSITY = args.verbosity
 AGG = args.agg
 SEED = args.seed
+
+
+# BATCH_SIZE = 64
+# NUM_NEIGHBORS = ['64','1']
+# NUM_EPOCH = 50
+# ATTN_NUM_HEADS = 2
+# DROP_OUT = 0.1
+# GPU = 0
+# USE_TIME = 'time'
+# ATTN_AGG_METHOD = 'attn' #attn, lstm, mean
+# ATTN_MODE = 'prod' #prod or map
+# DATA = 'uci'
+# NUM_LAYER = 2
+# LEARNING_RATE = 1e-4
+# POS_ENC = 'lp' #spd, lp saw
+# POS_DIM = 172
+# WALK_POOL = 'attn' #attn or sum
+# WALK_N_HEAD = 8
+# WALK_MUTUAL = True if WALK_POOL == 'attn' else False #walk_mutual が与えられたらTrue
+# TOLERANCE = 0
+# CPU_CORES = 1 #numbers of cpu_cores used for position encoding
+# NGH_CACHE = True #store_true
+# VERBOSITY = 1
+# AGG = 'walk' #walk or tree
+# SEED = 123
+
+# #Add selfly
+# DATA_USAGE=1.0 #args.data_usage
+# MODE='t' #args.mode
+# BIAS=0.0
+# SAMPLE_METHOD='binary' #binary or multinomial
+# WALK_LINEAR_OUT=True #与えられればTrue
+# args.datausage=DATA_USAGE
+# args.mode=MODE
+# args.bias=BIAS
+# args.sample_method=SAMPLE_METHOD
+# args.walk_linear_out=WALK_LINEAR_OUT
+
 assert(CPU_CORES >= -1)
 set_random_seed(SEED)
 logger, get_checkpoint_path, best_model_path = set_up_logger(args, sys_argv)
@@ -44,16 +102,19 @@ if args.data_usage < 1:
     logger.info('use partial data, ratio: {}'.format(args.data_usage))
 e_feat = np.load('./processed/ml_{}.npy'.format(DATA))
 n_feat = np.load('./processed/ml_{}_node.npy'.format(DATA))
+# u, iはカラム名を表す。つまり特定の列を取り出している。ここでuはsourcd node idx, iはdstination node idx
 src_l = g_df.u.values
 dst_l = g_df.i.values
 e_idx_l = g_df.idx.values
 label_l = g_df.label.values
 ts_l = g_df.ts.values
+#max_idxはノードidの最大値を保持している。つまり、最大のインデックスである
 max_idx = max(src_l.max(), dst_l.max())
 assert(np.unique(np.stack([src_l, dst_l])).shape[0] == max_idx or ~math.isclose(1, args.data_usage))  # all nodes except node 0 should appear and be compactly indexed
 assert(n_feat.shape[0] == max_idx + 1 or ~math.isclose(1, args.data_usage))  # the nodes need to map one-to-one to the node feat matrix
 
 # split and pack the data by generating valid train/val/test mask according to the "mode"
+# quantileは四分位数のことである。つまり、全体でちょうど70%までがtrain set. 70~85までがvalidation set.　残りがtest set
 val_time, test_time = list(np.quantile(g_df.ts, [0.70, 0.85]))
 if args.mode == 't':
     logger.info('Transductive training...')
@@ -65,9 +126,11 @@ else:
     assert(args.mode == 'i')
     logger.info('Inductive training...')
     # pick some nodes to mask (i.e. reserved for testing) for inductive setting
-    total_node_set = set(np.unique(np.hstack([g_df.u.values, g_df.i.values])))
-    num_total_unique_nodes = len(total_node_set)
+    total_node_set = set(np.unique(np.hstack([g_df.u.values, g_df.i.values]))) # np.stackで配列を結合し、np.uiqueでユニークな要素に限る
+    num_total_unique_nodes = len(total_node_set) # src, dst nodeの組み合わせ
+    # np.unionで和集合を取る。random.sample(リスト, 整数)で重複なし整数個の要素を取得したリストを返す
     mask_node_set = set(random.sample(set(src_l[ts_l > val_time]).union(set(dst_l[ts_l > val_time])), int(0.1 * num_total_unique_nodes)))
+    # map 関数で配列の各要素に関数を適用する。今回はg_dfの各インデックスがmask_node_setに含まれていればTrueに変更している。
     mask_src_flag = g_df.u.map(lambda x: x in mask_node_set).values
     mask_dst_flag = g_df.i.map(lambda x: x in mask_node_set).values
     none_mask_node_flag = (1 - mask_src_flag) * (1 - mask_dst_flag)
@@ -130,6 +193,7 @@ criterion = torch.nn.BCELoss()
 early_stopper = EarlyStopMonitor(tolerance=TOLERANCE)
 
 # start train and val phases
+# ngh_findersとは接続ノードを探すものでpartialとfullがある
 train_val(train_val_data, cawn, args.mode, BATCH_SIZE, NUM_EPOCH, criterion, optimizer, early_stopper, ngh_finders, rand_samplers, logger)
 
 # final testing

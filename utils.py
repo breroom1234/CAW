@@ -112,9 +112,9 @@ def set_random_seed(seed):
 
 
 def process_sampling_numbers(num_neighbors, num_layers):
-    num_neighbors = [int(n) for n in num_neighbors]
+    num_neighbors = [int(n) for n in num_neighbors] # num_neighborsがリストっていうこと？ 基本的には単数でいいのか?
     if len(num_neighbors) == 1:
-        num_neighbors = num_neighbors * num_layers
+        num_neighbors = num_neighbors * num_layers　# defaultだとnum_eighbors=20, num_layers=4
     else:
         num_layers = len(num_neighbors)
     return num_neighbors, num_layers

@@ -404,6 +404,7 @@ class CAWN(torch.nn.Module):
         self.ngh_finder = None
 
         # features
+        # モデルにパラメータを紐づけている？
         self.n_feat_th = torch.nn.Parameter(torch.from_numpy(n_feat.astype(np.float32)), requires_grad=False)
         self.e_feat_th = torch.nn.Parameter(torch.from_numpy(e_feat.astype(np.float32)), requires_grad=False)
 
@@ -411,7 +412,7 @@ class CAWN(torch.nn.Module):
         self.feat_dim = self.n_feat_th.shape[1]  # node feature dimension
         self.e_feat_dim = self.e_feat_th.shape[1]  # edge feature dimension
         self.time_dim = self.feat_dim  # default to be time feature dimension
-        self.pos_dim = pos_dim  # position feature dimension
+        self.pos_dim = pos_dim  # position feature dimension　デフォルトでは0になっている
         self.pos_enc = pos_enc
         self.model_dim = self.feat_dim + self.e_feat_dim + self.time_dim + self.pos_dim
         self.logger.info('neighbors: {}, node dim: {}, edge dim: {}, pos dim: {}, edge dim: {}'.format(self.num_neighbors, self.feat_dim, self.e_feat_dim, self.pos_dim, self.time_dim))
@@ -1062,7 +1063,7 @@ class FeatureEncoder(nn.Module):
         X = X.view(batch*n_walk, len_walk, feat_dim)
         if mask is not None:
             lengths = mask.view(batch*n_walk)
-            X = pack_padded_sequence(X, lengths, batch_first=True, enforce_sorted=False)
+            X = pack_padded_sequence(X, lengths.cpu(), batch_first=True, enforce_sorted=False)
         encoded_features = self.lstm_encoder(X)[0]
         if mask is not None:
             encoded_features, lengths = pad_packed_sequence(encoded_features, batch_first=True)
